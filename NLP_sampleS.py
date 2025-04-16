@@ -32,7 +32,7 @@ def gen_samples(x):
 # checks for duplicates during data entry
 def smart_sample(x):
     # load + format data
-    collected = pd.read_csv("C:/Users/James/Desktop/NLP AP/AP data - Sheet1.csv")
+    collected = pd.read_csv("C:/Users/James/Desktop/NLP AP/Temp AP data - Sheet1.csv")
     collected.columns = ['title', 'name', 'body', 'tag', 'rating1', 'rating2', 'rating3', 'rating4']
     # remove dupes
     collected = collected[~collected['title'].str.lower().duplicated(keep=False)].reset_index(drop=True)
@@ -81,4 +81,4 @@ def smart_sample(x):
     return collected.to_csv('Temp AP data - Sheet1.csv', index=False)
 
 # use smart sample to add x amount of rows to the dataset
-smart_sample(5)
+smart_sample(15)
