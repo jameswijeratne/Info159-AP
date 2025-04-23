@@ -80,5 +80,29 @@ def smart_sample(x):
     # Save cleaned dataset
     return collected.to_csv('Temp AP data - Sheet1.csv', index=False)
 
+def train_test_split():
+    # read data
+    data = pd.read_csv("C:/Users/James/Desktop/NLP AP/AP data - Sheet1.csv")
+    data.columns = ['title', 'name', 'body', 'tag', 'rating1', 'rating2', 'rating3', 'rating4']
+    # remove dupes
+    data = data[~data['title'].str.lower().duplicated(keep=False)].reset_index(drop=True)
+    # randomize
+    df = shuffle(df, random_state=42)
+    # generate indexes
+    total_len = len(df)
+    train_end = int(0.7 * total_len) # 70-1
+    dev_end = int(0.9 * total_len)  
+    # split
+    train_df = df.iloc[:train_end].reset_index(drop=True)
+    dev_df = df.iloc[train_end:dev_end].reset_index(drop=True)
+    test_df = df.iloc[dev_end:].reset_index(drop=True)
+    # export
+    train_df.to_csv("train.txt", sep="\t", index=False, header=True)
+    dev_df.to_csv("dev.txt", sep="\t", index=False, header=True)
+    test_df.to_csv("test.txt", sep="\t", index=False, header=True)
+    return
+
 # use smart sample to add x amount of rows to the dataset
-smart_sample(15)
+# smart_sample(1)
+
+train_test_split()
