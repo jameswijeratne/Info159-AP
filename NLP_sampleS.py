@@ -1,8 +1,14 @@
 import random
 import pandas as pd
+from sklearn.utils import shuffle
 import numpy as np
+import nlpaug.augmenter.word as naw
+import nltk
+from transformers import get_linear_schedule_with_warmup, DistilBertTokenizer, DistilBertModel
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+#nltk.download('averaged_perceptron_tagger_eng')
 
-startInd = 216
 # generates 'x' amout of samples 
 def gen_samples(x):
     # num --> keyword
@@ -80,29 +86,133 @@ def smart_sample(x):
     # Save cleaned dataset
     return collected.to_csv('Temp AP data - Sheet1.csv', index=False)
 
-def train_test_split():
+def test():
+    # test load data
+    data = pd.read_csv("C:/Users/James/Desktop/NLP AP/data/ap_data.csv")
+    data.columns = ['document_id', 'abstract', 'label']
+    
+    # test filter
+    #data = data[~data['abstract'].str.lower().duplicated(keep=False)].reset_index(drop=True)
+    
+    # test data augmentation
+    #aug = naw.SynonymAug(aug_src='wordnet')
+    aug = naw.ContextualWordEmbsAug(model_path='distilbert-base-uncased', action="substitute")
+    augmented = aug.augment(data.iloc[0,1], n=1) # change to multiply data by n-1
+    new_row = {
+        'document_id': 1,
+        'abstract': augmented,
+        'label': data.iloc[0,2],
+    }
+    dat = pd.DataFrame([new_row])
+    print(data.iloc[0,1])
+    print('============================================')
+    print(dat.head())
+
+    
+
+def mutate():
     # read data
-    data = pd.read_csv("C:/Users/James/Desktop/NLP AP/AP data - Sheet1.csv")
-    data.columns = ['title', 'name', 'body', 'tag', 'rating1', 'rating2', 'rating3', 'rating4']
+    data = pd.read_csv("C:/Users/James/Desktop/NLP AP/data/ap_data.csv")
+    data.columns = ['document_id', 'abstract', 'label']
     # remove dupes
-    data = data[~data['title'].str.lower().duplicated(keep=False)].reset_index(drop=True)
+    data = data[~data['abstract'].str.lower().duplicated(keep=False)].reset_index(drop=True)
+    ind = data.shape[0]
+    start = data.shape[0]
+    print(f'Intial shape {data.shape}')
+    # bootstrap
+    method = 'contextual' # edit for contextual
+    if method == 'synonym':
+        aug = naw.SynonymAug(aug_src='wordnet')
+    elif method == 'contextual':
+        aug = naw.ContextualWordEmbsAug(model_path='distilbert-base-uncased', action="substitute")
+    else:
+        raise ValueError("Unsupported method")
+    # bootstrap samples
+    print(f'Bootstrapping using method {method}')
+    for text in data['abstract']:
+        augmented = aug.augment(text, n=1) # change to multiply data by n-1
+        ind += 1
+        new_row = {
+            'document_id': ind,
+            'abstract': augmented,
+            'label': data.iloc[ind-start,2],
+        }
+        data = pd.concat([data, pd.DataFrame([new_row])], ignore_index=True)
+        print(f'Bootstrapped sample {ind}!')
+    print('Compiled mutated dataset!')
+    print(data.shape)
+    return data.to_csv('aug_ap_data.csv', index=False)
+    
+def train_test_split():
+    # load data
+    data = pd.read_csv("C:/Users/James/Desktop/NLP AP/data/ap_data.csv")
+    data.columns = ['document_id', 'abstract', 'label']
     # randomize
-    df = shuffle(df, random_state=42)
+    data = shuffle(data, random_state=42)
     # generate indexes
-    total_len = len(df)
-    train_end = int(0.7 * total_len) # 70-1
-    dev_end = int(0.9 * total_len)  
+    total_len = len(data)
+    #train_end = int(0.6 * total_len) 
+    dev_end = int(0.8 * total_len)  
     # split
-    train_df = df.iloc[:train_end].reset_index(drop=True)
-    dev_df = df.iloc[train_end:dev_end].reset_index(drop=True)
-    test_df = df.iloc[dev_end:].reset_index(drop=True)
+    train_df = data.iloc[:dev_end].reset_index(drop=True)
+    dev_df = data.iloc[dev_end:].reset_index(drop=True)
+    #test_df = data.iloc[dev_end:].reset_index(drop=True)
     # export
     train_df.to_csv("train.txt", sep="\t", index=False, header=True)
     dev_df.to_csv("dev.txt", sep="\t", index=False, header=True)
-    test_df.to_csv("test.txt", sep="\t", index=False, header=True)
+    #test_df.to_csv("test.txt", sep="\t", index=False, header=True)
     return
+
+def gen_larger_test():
+    # load data
+    data = pd.read_csv("C:/Users/James/Desktop/NLP AP/data/ap_data.csv")
+    data.columns = ['document_id', 'abstract', 'label']
+    # randomize
+    data = shuffle(data, random_state=42)
+    # generate indexes
+    total_len = len(data)
+    end = int(0.5 * total_len)  
+    # split
+    df = data.iloc[:end].reset_index(drop=True)
+    # export
+    df.to_csv("test.txt", sep="\t", index=False, header=True)
+
+def calculate_cosine_similarities():
+    df = pd.read_csv("C:/Users/James/Desktop/NLP AP/data/aug_ap_data.csv")
+    df.columns = ['document_id', 'abstract', 'label']
+    # Determine the column containing text
+    if 1 in df.columns:
+        text_column = df[1]
+    elif 'abstract' in df.columns:
+        text_column = df['abstract']
+    else:
+        raise ValueError("DataFrame must contain either column index 1 or 'abstract'")
+    
+    # Split into original and bootstrapped samples
+    original_texts = text_column.iloc[:273].tolist()
+    bootstrapped_texts = text_column.iloc[273:].tolist()
+
+    # Vectorize texts using TF-IDF
+    vectorizer = TfidfVectorizer()
+    tfidf_matrix = vectorizer.fit_transform(original_texts + bootstrapped_texts)
+
+    # Compute cosine similarities: bootstrapped vs original
+    original_vectors = tfidf_matrix[:273]
+    bootstrapped_vectors = tfidf_matrix[273:]
+    similarities = cosine_similarity(bootstrapped_vectors, original_vectors)
+
+    # Optional: convert to DataFrame for easier interpretation
+    similarity_df = pd.DataFrame(similarities, 
+                                  columns=[f'Original_{i}' for i in range(273)],
+                                  index=[f'Bootstrapped_{i}' for i in range(len(bootstrapped_texts))])
+    print(f'Cos similarity between original and boostrapped: {similarity_df.iloc[:,0].mean()}')
+    return 
 
 # use smart sample to add x amount of rows to the dataset
 # smart_sample(1)
 
-train_test_split()
+#test()
+#mutate()
+#train_test_split()
+#gen_larger_test()
+calculate_cosine_similarities()
